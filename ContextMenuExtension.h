@@ -29,13 +29,17 @@ static const CLSID CLSID_ContextMenuExtension =
 
 class __declspec(uuid("{1234ABCD-1234-1234-1234-56789ABCDEF0}")) ContextMenuExtension : 
     public IExplorerCommand,
-    public IContextMenu3
+    public IContextMenu3,
+    public IShellExtInit
 {
 public:
     // IUnknown
     IFACEMETHODIMP QueryInterface(REFIID riid, void** ppv);
     IFACEMETHODIMP_(ULONG) AddRef();
     IFACEMETHODIMP_(ULONG) Release();
+
+    // IShellExtInit
+    IFACEMETHODIMP Initialize(PCIDLIST_ABSOLUTE pidlFolder, IDataObject* pdtobj, HKEY hkeyProgID);
 
     // IExplorerCommand
     IFACEMETHODIMP GetTitle(IShellItemArray* psiItemArray, LPWSTR* ppszName);

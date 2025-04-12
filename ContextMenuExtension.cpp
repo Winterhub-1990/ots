@@ -17,6 +17,11 @@
 #include <fstream>
 #include <zip.h>
 #include <tinyxml2.h>
+#include <new>
+#include <ShlGuid.h>    // For shell GUIDs
+#include <ShObjIdl.h>   // For IShellItemArray
+#include <shlwapi.h>    // For QITAB and QISearch
+#include <objbase.h>    // For COM interfaces
 
 // Define supported formats
 const std::vector<std::wstring> SUPPORTED_FORMATS = {
@@ -63,15 +68,33 @@ ContextMenuExtension::~ContextMenuExtension() {
 
 // IUnknown methods
 IFACEMETHODIMP ContextMenuExtension::QueryInterface(REFIID riid, void** ppv) {
-    static const QITAB qit[] = {
-        QITABENT(ContextMenuExtension, IExplorerCommand),
-        QITABENT(ContextMenuExtension, IExplorerCommandState),
-        QITABENT(ContextMenuExtension, IContextMenu),
-        QITABENT(ContextMenuExtension, IContextMenu2),
-        QITABENT(ContextMenuExtension, IContextMenu3),
-        { 0 },
-    };
-    return QISearch(this, qit, riid, ppv);
+    *ppv = NULL;
+
+    // Check for known interfaces
+    if (IsEqualIID(riid, IID_IUnknown)) {
+        *ppv = static_cast<IExplorerCommand*>(this);
+    }
+    else if (IsEqualIID(riid, IID_IExplorerCommand)) {
+        *ppv = static_cast<IExplorerCommand*>(this);
+    }
+    else if (IsEqualIID(riid, IID_IContextMenu)) {
+        *ppv = static_cast<IContextMenu*>(this);
+    }
+    else if (IsEqualIID(riid, IID_IContextMenu2)) {
+        *ppv = static_cast<IContextMenu2*>(this);
+    }
+    else if (IsEqualIID(riid, IID_IContextMenu3)) {
+        *ppv = static_cast<IContextMenu3*>(this);
+    }
+    else if (IsEqualIID(riid, IID_IShellExtInit)) {
+        *ppv = static_cast<IShellExtInit*>(this);
+    }
+    else {
+        return E_NOINTERFACE;
+    }
+
+    AddRef();
+    return S_OK;
 }
 
 IFACEMETHODIMP_(ULONG) ContextMenuExtension::AddRef() {
@@ -90,15 +113,42 @@ IFACEMETHODIMP_(ULONG) ContextMenuExtension::Release() {
 IFACEMETHODIMP ContextMenuExtension::GetTitle(IShellItemArray* psiItemArray, LPWSTR* ppszName) {
     *ppszName = nullptr;
     WCHAR szTitle[50];
-    LoadStringW(g_hInst, IDS_MENU_TITLE, szTitle, ARRAYSIZE(szTitle));
-    return SHStrDupW(szTitle, ppszName);
+    
+    if (LoadStringW(g_hInst, IDS_MENU_TITLE, szTitle, ARRAYSIZE(szTitle)) == 0) {
+        return E_FAIL;
+    }
+
+    size_t len = wcslen(szTitle) + 1;
+    *ppszName = static_cast<LPWSTR>(CoTaskMemAlloc(len * sizeof(WCHAR)));
+    if (*ppszName == nullptr) {
+        return E_OUTOFMEMORY;
+    }
+
+    wcscpy_s(*ppszName, len, szTitle);
+    return S_OK;
 }
 
 IFACEMETHODIMP ContextMenuExtension::GetIcon(IShellItemArray* psiItemArray, LPWSTR* ppszIcon) {
     *ppszIcon = nullptr;
-    WCHAR szIconPath[MAX_PATH];
-    GetModuleFileNameW(g_hInst, szIconPath, ARRAYSIZE(szIconPath));
-    return SHStrDupW(szIconPath, ppszIcon);
+    WCHAR szModulePath[MAX_PATH];
+    
+    if (GetModuleFileNameW(g_hInst, szModulePath, ARRAYSIZE(szModulePath)) == 0) {
+        return E_FAIL;
+    }
+
+    // Format the icon resource path
+    std::wstring iconPath = szModulePath;
+    iconPath += L",-";
+    iconPath += std::to_wstring(IDI_MENU_ICON);
+
+    size_t len = iconPath.length() + 1;
+    *ppszIcon = static_cast<LPWSTR>(CoTaskMemAlloc(len * sizeof(WCHAR)));
+    if (*ppszIcon == nullptr) {
+        return E_OUTOFMEMORY;
+    }
+
+    wcscpy_s(*ppszIcon, len, iconPath.c_str());
+    return S_OK;
 }
 
 IFACEMETHODIMP ContextMenuExtension::GetState(IShellItemArray* psiItemArray, BOOL fOkToBeSlow, EXPCMDSTATE* pCmdState) {
@@ -302,4 +352,159 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID reserved) {
             break;
     }
     return TRUE;
+}
+
+// Add missing IExplorerCommand implementations
+IFACEMETHODIMP ContextMenuExtension::GetToolTip(IShellItemArray* psiItemArray, LPWSTR* ppszInfotip) {
+    *ppszInfotip = nullptr;
+    return E_NOTIMPL;
+}
+
+IFACEMETHODIMP ContextMenuExtension::GetCanonicalName(GUID* pguidCommandName) {
+    *pguidCommandName = GUID_NULL;
+    return E_NOTIMPL;
+}
+
+IFACEMETHODIMP ContextMenuExtension::GetFlags(EXPCMDFLAGS* pFlags) {
+    *pFlags = ECF_DEFAULT;
+    return S_OK;
+}
+
+IFACEMETHODIMP ContextMenuExtension::EnumSubCommands(IEnumExplorerCommand** ppEnum) {
+    *ppEnum = nullptr;
+    return E_NOTIMPL;
+}
+
+// Add missing IContextMenu implementations
+IFACEMETHODIMP ContextMenuExtension::GetCommandString(UINT_PTR idCmd, UINT uFlags, UINT* pwReserved, LPSTR pszName, UINT cchMax) {
+    return E_NOTIMPL;
+}
+
+IFACEMETHODIMP ContextMenuExtension::HandleMenuMsg(UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    return HandleMenuMsg2(uMsg, wParam, lParam, nullptr);
+}
+
+IFACEMETHODIMP ContextMenuExtension::HandleMenuMsg2(UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT* plResult) {
+    if (plResult)
+        *plResult = 0;
+    return S_OK;
+}
+
+// Add missing IContextMenu::InvokeCommand implementation
+IFACEMETHODIMP ContextMenuExtension::InvokeCommand(LPCMINVOKECOMMANDINFO pici) {
+    if (HIWORD(pici->lpVerb))
+        return E_INVALIDARG;
+
+    UINT idCmd = LOWORD(pici->lpVerb);
+    if (idCmd >= CMD_CONVERT && idCmd <= CMD_COMMAND3) {
+        ExecuteCommand(static_cast<CommandId>(idCmd), m_selectedFile);
+        return S_OK;
+    }
+
+    return E_INVALIDARG;
+}
+
+// Add ExecuteCommand implementation
+void ContextMenuExtension::ExecuteCommand(CommandId cmdId, const std::wstring& filePath) {
+    switch (cmdId) {
+        case CMD_CONVERT:
+            // Implement conversion logic
+            break;
+        case CMD_EXPORT:
+            // Implement export logic
+            break;
+        case CMD_COMMAND1:
+        case CMD_COMMAND2:
+        case CMD_COMMAND3:
+            // Implement other commands
+            break;
+    }
+}
+
+// Factory class implementation
+ContextMenuExtensionFactory::ContextMenuExtensionFactory() : m_cRef(1) {
+    InterlockedIncrement(&g_cDllRef);
+}
+
+ContextMenuExtensionFactory::~ContextMenuExtensionFactory() {
+    InterlockedDecrement(&g_cDllRef);
+}
+
+IFACEMETHODIMP ContextMenuExtensionFactory::QueryInterface(REFIID riid, void** ppv) {
+    *ppv = NULL;
+
+    if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_IClassFactory)) {
+        *ppv = static_cast<IClassFactory*>(this);
+        AddRef();
+        return S_OK;
+    }
+
+    return E_NOINTERFACE;
+}
+
+IFACEMETHODIMP_(ULONG) ContextMenuExtensionFactory::AddRef() {
+    return InterlockedIncrement(&m_cRef);
+}
+
+IFACEMETHODIMP_(ULONG) ContextMenuExtensionFactory::Release() {
+    ULONG cRef = InterlockedDecrement(&m_cRef);
+    if (cRef == 0) {
+        delete this;
+    }
+    return cRef;
+}
+
+IFACEMETHODIMP ContextMenuExtensionFactory::CreateInstance(IUnknown *pUnkOuter, REFIID riid, void **ppv) {
+    *ppv = NULL;
+
+    // The shell extension doesn't support aggregation
+    if (pUnkOuter != NULL) {
+        return CLASS_E_NOAGGREGATION;
+    }
+
+    ContextMenuExtension *pExt = new (std::nothrow) ContextMenuExtension();
+    if (pExt == NULL) {
+        return E_OUTOFMEMORY;
+    }
+
+    HRESULT hr = pExt->QueryInterface(riid, ppv);
+    pExt->Release();
+
+    return hr;
+}
+
+IFACEMETHODIMP ContextMenuExtensionFactory::LockServer(BOOL fLock) {
+    if (fLock) {
+        InterlockedIncrement(&g_cDllRef);
+    } else {
+        InterlockedDecrement(&g_cDllRef);
+    }
+    return S_OK;
+}
+
+// Add IShellExtInit implementation
+IFACEMETHODIMP ContextMenuExtension::Initialize(PCIDLIST_ABSOLUTE pidlFolder, IDataObject* pdtobj, HKEY hkeyProgID) {
+    if (pdtobj == nullptr) {
+        return E_INVALIDARG;
+    }
+
+    FORMATETC fe = { CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+    STGMEDIUM stm;
+
+    if (SUCCEEDED(pdtobj->GetData(&fe, &stm))) {
+        HDROP hDrop = static_cast<HDROP>(stm.hGlobal);
+        UINT cFiles = DragQueryFileW(hDrop, 0xFFFFFFFF, nullptr, 0);
+        
+        if (cFiles == 1) {  // We only handle single selection
+            WCHAR szFile[MAX_PATH];
+            if (DragQueryFileW(hDrop, 0, szFile, ARRAYSIZE(szFile))) {
+                m_selectedFile = szFile;
+            }
+        }
+        
+        ReleaseStgMedium(&stm);
+        return S_OK;
+    }
+
+    return E_FAIL;
 } 

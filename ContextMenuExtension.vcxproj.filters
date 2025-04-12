@@ -27,6 +27,9 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="..\reference\menu_icon.ico" />
+    <Image Include="..\reference\menu_icon.ico">
+      <Filter>source</Filter>
+    </Image>
+    <Image Include="icon1.ico" />
   </ItemGroup>
 </Project>

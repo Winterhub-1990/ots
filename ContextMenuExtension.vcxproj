@@ -188,6 +188,7 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="..\reference\menu_icon.ico" />
+    <Image Include="icon1.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
